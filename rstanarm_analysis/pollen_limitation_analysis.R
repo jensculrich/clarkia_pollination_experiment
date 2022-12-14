@@ -5,6 +5,10 @@ library(ggplot2)
 ### Pollen limitation analysis
 ## Started 9.22.22 by J Ulrich
 
+# This file has a self contained analysis, using calling STAN models through rstanarm
+# Separately (for practice), I will conduct a parallel analysis using a manually
+# written STAN model.  
+
 ## SITE_TREATMENT
 # Plants were placed in arrays at parks with ("treatment") vs without ("control")
 # flower enhancements when in flower. 
@@ -19,24 +23,48 @@ library(ggplot2)
 # were installed at sites. 
 
 ## SEEDS_PRODUCED
-# we let the fruits develop for ~3 weeks after the experiment and then clipped and
+# I let the fruits develop for ~3 weeks after the experiment and then clipped and
 # bagged them. Fruits were dissected and number of seeds (the response variable) were 
-# counted in the lab (counts currently still ongoing as of 9.22.22 and so this is a partial dataset)
+# counted in the lab.
+
+# I then filter the data set to successfully treated pairs, where both plants 
+# were open and receptive during the exposure at the field site, the pollen supplementation
+# was applied with confidence that the stigma was receptive, and the supplemented
+# flower was neither aborted, split, or destroyed.
+
+# I calculate a pollen limitation index for each untreated (control) flower using 
+# using it's paired, treated flower from the same plant with the formula:
+# PL_INDEX = 1 - (((treatment - control) / treatment))
+
+# I then attempt to examine the effect of the site treatment on PL_INDEX
+# PL_INDEX turns out to be bimodally distributed. Flowers from both site
+# types follow this general pattern. I interpret this as meaning that either the
+# flower was visited by a viable pollinator and made ~as many seeds as the supplemented flower OR
+# was not visited by a viable pollinator and made a few seeds from self-pollination.
+
+# Because the response of PL_INDEX is bimodally distributed, I transform the response
+# into a binary outcome: was pollen limited or was not pollen limited.
+# I use a threshold of 0.5 (from visual interpretation of the bimodal response)
+# with plants < 0.5 being pollen limited (1) or > 0.5 not pollen limited (0).
+# I then use a bayesian mixed effects glm (binary family, logit link) to estimate
+# the effect of site type (mowed or not mowed) on the probability of the 
+# outcome that a flower is pollen limited (1).
 
 ## expected outcomes
-# We expect a positive effect of PLANT_TREATMENT on seeds produced. If no effect, plants
-# are not pollen limited in this system. 
-# A positive impact of SITE_TREATMENT on SEEDS_PRODUCED would indicate that flower
-# enhancements have a positive effect across the board on seeds produced, but 
-# we are really looking to test the interaction between PLANT_TREATMENT*SITE_TREATMENT
-# a positive value would indicate that plants are less pollen limited in treatment sites.
+# A negative effect of no mowing on the pollen limitation outcome would support 
+# the ecosystem services spillover hypothesis, that the flower enhancements support
+# more insects that end up increase the delivery of the ES of pollination in 
+# nearby areas.
 
-# Analysis with simulated data
+###-----------------------------------------------------------------------------
+## Analysis with simulated data
+
+# fill with data simulation
 
 ###-----------------------------------------------------------------------------
 ## Analysis with real data
 
-df <- read.csv("clarkia_pollination_data_2022.csv")
+df <- read.csv("./data/clarkia_pollination_data_2022.csv")
 
 ###-----------------------------------------------------------------------------
 ## Basic data summary
@@ -293,126 +321,3 @@ loo_compare(loo0, loo1)
 # where we have most plants being pollinated relatively sufficiently
 # and about 1/3 being pollen limited?
 pp_check(stan_fit, nreps=100)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# recode treatments as binary integer values (0 = control, 1 = treatment)
-df$SITE_TREATMENT <- recode_factor(df$SITE_TREATMENT, 
-                control = "0", treatment = "1")
-df$FLOWER_TREATMENT <- recode_factor(df$FLOWER_TREATMENT, 
-                                   "control" = "0", "treatment" = "1",
-                                   " treatment" = "1")
-df <- df %>%
-  mutate(SITE_TREATMENT = as.integer(SITE_TREATMENT) - 1,
-         FLOWER_TREATMENT = as.integer(FLOWER_TREATMENT) - 1,
-         SITE =  as.factor(SITE))
- 
-str(df)
-
-stan_glm_fit1 <- stan_glmer(SEEDS_PRODUCED ~ 
-                  SITE_TREATMENT + 
-                  FLOWER_TREATMENT + 
-                  SITE_TREATMENT*FLOWER_TREATMENT + (1|SITE), 
-                family = poisson(link = "log"),
-                data = df) 
-
-print(stan_glm_fit1)  
-
-(test1 <- pp_check(stan_glm_fit1, plotfun = "stat", binwidth = 0.01))
-pp_check(stan_glm_fit1)
-
-stan_glm_fit2 <- update(stan_glm_fit1, family = neg_binomial_2)
-print(stan_glm_fit2) 
-
-(test2 <- pp_check(stan_glm_fit2, plotfun = "stat", binwidth = 0.01))
-pp_check(stan_glm_fit2)
-# visual check greatly favours the neg bin model, but that being said
-# it still doesn't look great.
-
-loo1 <- loo(stan_glm_fit1, cores = 2)
-loo2 <- loo(stan_glm_fit2, cores = 2)
-loo_compare(loo1, loo2)
- # clear preference for the negative binomial model
-
-# library(shinystan)
-# launch_shinystan(fit)
-
-### Alternative Approach
-# use pollen limitation index for each plant 
-# (divide see)
-### Analysis with real data
-df2 <- read.csv("clarkia_pollination_data_2022.csv")
-
-# remove flowers with uncounted seed pods
-df2 <- df2 %>%
-  filter(PL_INDEX != "0") %>%
-  filter(PL_INDEX != "#DIV/0!") %>%
-  filter(PL_INDEX != "") %>%
-  mutate(PL_INDEX = as.numeric(PL_INDEX)) %>%
-  filter(PL_INDEX < 2) # there is one big outlier that I am just going to remove for this exploratory analysis
-  
-# recode treatments as binary integer values (0 = control, 1 = treatment)
-df2$SITE_TREATMENT <- recode_factor(df2$SITE_TREATMENT, 
-                                   control = "0", treatment = "1")
-df2 <- df2 %>%
-  mutate(SITE_TREATMENT = as.integer(SITE_TREATMENT) - 1,
-         SITE =  as.factor(SITE))
-
-str(df2)
-
-# run lmer
-stan_glm_fit3 <- stan_lmer(PL_INDEX ~ 
-                              SITE_TREATMENT + 
-                            (1|SITE),
-                            data = df2) 
-
-print(stan_glm_fit3)  
-
-(test3 <- pp_check(stan_glm_fit3, plotfun = "stat", binwidth = 0.01))
-pp_check(stan_glm_fit3)
-
-# run glmer with gamma distribution
-stan_glm_fit4 <- stan_glmer(PL_INDEX ~ 
-                             SITE_TREATMENT + 
-                             (1|SITE),
-                            family = Gamma(link = "inverse"),
-                           data = df2) 
-
-print(stan_glm_fit4)  
-
-(test4 <- pp_check(stan_glm_fit4, plotfun = "stat", binwidth = 0.01))
-pp_check(stan_glm_fit4)
-
-# run glmer with gamma distribution
-stan_glm_fit5 <- stan_glmer(PL_INDEX ~ 
-                              SITE_TREATMENT + 
-                              (1|SITE),
-                            family = Gamma(link = "log"),
-                            data = df2) 
-
-print(stan_glm_fit5)  
-
-(test5 <- pp_check(stan_glm_fit5, plotfun = "stat", binwidth = 0.01))
-pp_check(stan_glm_fit5)
-
-loo3 <- loo(stan_glm_fit3, cores = 2)
-loo4 <- loo(stan_glm_fit4, cores = 2)
-loo5 <- loo(stan_glm_fit5, cores = 2)
-loo_compare(loo3, loo4, loo5)
-
-# based on the visual pp checks and on the loo scores,
-# model 4 and 5 currently seem to be the best perfomative models,
-# perhaps with doubling the data by counting the rest of the seeds the 
-# overall model output fit will slightly improve, giving best estimates
-# for parameters
