@@ -16,26 +16,29 @@ data {
   
   int<lower=0,upper=1> y[N]; // Pollen limitation (PL) outcome for each flower pair
   
-  int<lower=1> n_pots;  // number of pots 
-  int<lower=1, upper=n_pots> pots[N];  // vector of pot names
+  int<lower=1> n_pots;  // number of pots // number of level-2 clusters
+  int<lower=1, upper=n_pots> pot_ID[N];  // vector of pot names // level-2 clusters
   
-  int<lower=1> n_sites;  // number of sites 
-  int<lower=1, upper=n_sites> sites[N];  // vector of site names
+  int<lower=1> n_sites;  // number of sites // number of level-3 clusters
+  int<lower=1, upper=n_sites> site_ID[N];  // vector of site names // level-3 clusters
   
+  int<lower=1> siteLookup[n_pots]; // Level 3 look up vector for level 2
 }
 
 parameters {
   
   real alpha0; // global intercept 
   
+  // Level-2 random effect
   // pot specific intercept allows some sites to have lower success than others, 
   // but with overall estimates for success partially informed by the data pooled across all pots.
-  vector[n_pots] alpha_pot; // pot specific intercept for PL outcome
+  real u_pot[n_pots]; // pot specific intercept for PL outcome
   real<lower=0> sigma_alpha_pot; // variance in pot intercepts
   
+  // Level-3 random effect
   // site specific intercept allows some sites to have lower success than others, 
   // but with overall estimates for success partially informed by the data pooled across all sites.
-  vector[n_sites] alpha_site; // site specific intercept for PL outcome
+  real u_site[n_sites]; // site specific intercept for PL outcome
   real<lower=0> sigma_alpha_site; // variance in site intercepts
   
   real beta; // effect of site type on the PL outcome
@@ -48,23 +51,26 @@ transformed parameters{
   real alpha0_pot[n_pots];
   real alpha0_site[n_sites];
 
-  // the linear predictor for the observations
+  // the linear predictor for the individual observations
    real p[N];
 
   // compute the varying intercept at the site level
-  for(i in 1:N){
-    alpha0_site[i] = alpha_site[i];
+  // Level-3 (n_sites level-3 random intercepts)
+  for(i in 1:n_sites){
+    alpha0_site[i] = u_site[i];
   }
 
   // compute varying intercept at the pot within site level
+  // Level-2 (n_pots level-2 random intercepts)
   for(i in 1:n_pots){
-     alpha0_pot[i] = alpha0_site[pots[i]] + alpha_pot[i];
+     alpha0_pot[i] = alpha0_site[siteLookup[i]] + u_pot[i];
   }
-  
+
+  // Individual flower mean
   for(i in 1:N){
     
       p[i] = alpha0 + // a global intercept
-             alpha0_pot[pots[i]] + // a pot|site specific intercept
+             alpha0_pot[pot_ID[i]] + // a pot|site specific intercept
              beta * x[i] // an effect of site type
             ; // end p
               
@@ -80,13 +86,13 @@ model {
   
   
   // level-3 grouping
-  alpha_site ~ normal(0, sigma_alpha_site); 
+  u_site ~ normal(0, sigma_alpha_site); 
   // prob of success intercept for each site drawn from the community
   // distribution (variance defined by sigma), centered at 0. 
   sigma_alpha_site ~ cauchy(0, 1); // weakly informative prior
   
   // level-2 grouping
-  alpha_pot ~ normal(0, sigma_alpha_pot); 
+  u_pot ~ normal(0, sigma_alpha_pot); 
   // prob of success intercept for each site drawn from the community
   // distribution (variance defined by sigma), centered at 0. 
   sigma_alpha_pot ~ cauchy(0, 1); // weakly informative prior
