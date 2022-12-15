@@ -71,6 +71,25 @@ prep_data <- function(max_PL_accepted,
     mutate(PL_INDEX_BINARY = ifelse(PL_INDEX < PL_response_threshold, 1, 0))
   
   ###-----------------------------------------------------------------------------
+  ## Extract additional info from the df
+  
+  # siteLookup (which level 3 cluster is level 2 cluster grouped in?)
+  siteLookup <- df_binary %>%
+    group_by(as.factor(POT_NUMBER)) %>%
+    slice(1) %>%
+    pull(SITE)
+  
+  # site treatment covariate 
+  x <- df_binary %>%
+    # treatment as 1, control as 0
+    mutate(SITE_TREATMENT = (as.numeric(as.factor(SITE_TREATMENT)) - 1)) %>%
+    pull(SITE_TREATMENT) 
+  
+  # site treatment covariate 
+  y <- df_binary %>%
+    pull(PL_INDEX_BINARY) 
+  
+  ###-----------------------------------------------------------------------------
   ## Return stuff
   
   return(list(
@@ -82,11 +101,12 @@ prep_data <- function(max_PL_accepted,
     
     # should add a numeric site name and return both
     sites = df_binary$SITE, # vector of site names
+    sites_numeric = as.numeric(as.factor(df_binary$SITE)), # numeric site names
     # need a site name for each pot (length = n_pots)
     siteLookup = siteLookup,
     
     x = x, # site type covariate data
-    y = y # outcome data
+    y = y # outcome data (binary PL index)
     
   ))
   

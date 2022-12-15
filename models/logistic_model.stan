@@ -22,7 +22,7 @@ data {
   int<lower=1> n_sites;  // number of sites // number of level-3 clusters
   int<lower=1, upper=n_sites> site_ID[N];  // vector of site names // level-3 clusters
   
-  int<lower=1> siteLookup[n_pots]; // Level 3 look up vector for level 2
+  int<lower=1> siteLookup[n_pots]; // level-3 cluster look up vector for level-2 cluster
 }
 
 parameters {
